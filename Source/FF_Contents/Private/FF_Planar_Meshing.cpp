@@ -32,9 +32,6 @@ bool APlanar_Meshing::IsPointInsideSpline(USplineComponent* BoundarySpline, cons
 	// Find the closest point on the spline to the current grid point.
 	FVector ClosestSplinePoint = BoundarySpline->FindLocationClosestToWorldLocation(Point, ESplineCoordinateSpace::World);
 
-	// Calculate the distance from the point to the closest spline point.
-	float Distance = FVector::Dist(Point, ClosestSplinePoint);
-
 	// Use the cross product and distance to determine if the point is inside or outside the spline.
 	FVector DirectionToSpline = (ClosestSplinePoint - Point).GetSafeNormal();
 	FVector SplineTangent = BoundarySpline->FindDirectionClosestToWorldLocation(Point, ESplineCoordinateSpace::World);
