@@ -10,31 +10,15 @@
 
 #include "FF_Planar_Meshing.generated.h"
 
-USTRUCT(BlueprintType)
-struct FF_CONTENTS_API FGridParameters
-{
-	GENERATED_BODY()
-
-public:
-
-	UPROPERTY(BlueprintReadOnly)
-	TArray<int32> Points;
-
-	UPROPERTY(BlueprintReadOnly)
-	TArray<FVector> Vertices;
-
-	UPROPERTY(BlueprintReadOnly)
-	int32 Grid_X = 0;
-};
-
-UDELEGATE(BlueprintAuthorityOnly)
-DECLARE_DYNAMIC_DELEGATE_OneParam(FDelegateGrid, FGridParameters, Out_Params);
-
 UCLASS()
 class FF_CONTENTS_API APlanar_Meshing : public AActor
 {
 	GENERATED_BODY()
 	
+private:
+
+	bool IsPointInsideSpline(USplineComponent* BoundarySpline, const FVector& Point) const;
+
 protected:
 	
 	// Called when the game starts or when spawned.
@@ -42,9 +26,6 @@ protected:
 
 	// Called when the game ends or when destroyed.
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-
-	template <typename T> 
-	static void SetArrayElement(TArray<T>& Array, T Item, int32 Index);
 
 public:	
 	
@@ -54,7 +35,10 @@ public:
 	// Called every frame.
 	virtual void Tick(float DeltaTime) override;
 
-	UFUNCTION(BlueprintCallable)
-	virtual FGridParameters MakePointGrid(USplineComponent* In_Spline, double Triangle_Size = 100);
+	UFUNCTION(BlueprintCallable, Category = "Frozen Forest|FF Contents|Planar Grid")
+	bool Grid_Generate(TArray<FTransform>& Out_Vertices, USplineComponent* BoundarySpline, FVector Size = FVector(0.1), double GridSize = 100, int32 Layer = 1, double Height = 10);
+
+	UFUNCTION(BlueprintCallable, Category = "Frozen Forest|FF Contents|Planar Grid")
+	void Grid_Debug(FVector Point, bool bInside, bool bIsPersistant, double Time = 10);
 
 };

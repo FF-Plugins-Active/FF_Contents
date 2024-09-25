@@ -27,91 +27,95 @@ void APlanar_Meshing::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
-template<typename T>
-void APlanar_Meshing::SetArrayElement(TArray<T>& Array, T Item, int32 Index)
+bool APlanar_Meshing::IsPointInsideSpline(USplineComponent* BoundarySpline, const FVector& Point) const
 {
-	if (Array.Num() - 1 < Index)
-	{
-		Array.SetNum(Index + 1);
-	}
-	
-	Array.Insert(Item, Index);
+	// Find the closest point on the spline to the current grid point.
+	FVector ClosestSplinePoint = BoundarySpline->FindLocationClosestToWorldLocation(Point, ESplineCoordinateSpace::World);
+
+	// Calculate the distance from the point to the closest spline point.
+	float Distance = FVector::Dist(Point, ClosestSplinePoint);
+
+	// Use the cross product and distance to determine if the point is inside or outside the spline.
+	FVector DirectionToSpline = (ClosestSplinePoint - Point).GetSafeNormal();
+	FVector SplineTangent = BoundarySpline->FindDirectionClosestToWorldLocation(Point, ESplineCoordinateSpace::World);
+	FVector CrossProduct = FVector::CrossProduct(FVector(0, 0, 1), SplineTangent);
+
+	// Use the dot product to determine whether the point is inside or outside.
+	float DotProduct = FVector::DotProduct(DirectionToSpline, CrossProduct);
+
+	// If the dot product is negative, the point is inside the spline.
+	return DotProduct < 0;
 }
 
-FGridParameters APlanar_Meshing::MakePointGrid(USplineComponent* In_Spline, double Triangle_Size)
+bool APlanar_Meshing::Grid_Generate(TArray<FTransform>& Out_Vertices, USplineComponent* BoundarySpline, FVector Size, double GridSize, int32 Layer, double Height)
 {
-	if (!IsValid(In_Spline))
+	if (!IsValid(BoundarySpline))
 	{
-		return FGridParameters();
+		UE_LOG(LogTemp, Warning, TEXT("APlanar_Meshing::Grid_Generate -> Boundry spline is not valid."));
+		return false;
 	}
 
-	TArray<FVector> Vertices;
-	TArray<int32> Point_Indexes;
-
-	const double Degree_60 = 60;
-	bool bIsEdge = false;
-	bool bIsInside = false;
-	int32 CurrentPoint = 0;
-
-	const FVector Origin = In_Spline->Bounds.Origin;
-	const FVector Extent = In_Spline->Bounds.BoxExtent;
-	const double Clampled_Size = UKismetMathLibrary::FClamp(Triangle_Size, (double)2, double(30));
-	const double Divison = Clampled_Size / 2;
-	const double Tangent = Divison * UKismetMathLibrary::Tan(Degree_60);
-
-	const int32 Number_X = UKismetMathLibrary::FCeil((Extent.X / Clampled_Size) + 1);
-	const int32 Number_Y = UKismetMathLibrary::FCeil((Extent.Y / Divison) + 1);
-
-	for (int32 Index_Y = Number_Y * (-1); Index_Y < Number_Y; Index_Y++)
+	if (GridSize <= 0)
 	{
-		for (int32 Index_X = Number_X * (-1); Index_X < Number_X; Index_X++)
+		UE_LOG(LogTemp, Warning, TEXT("APlanar_Meshing::Grid_Generate -> Grid size have to be bigger than 0."));
+		return false;
+	}
+
+	if (Layer <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("APlanar_Meshing::Grid_Generate -> Layer size have to be bigger than 0."));
+		return false;
+	}
+
+	if (Height <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("APlanar_Meshing::Grid_Generate -> Height have to be bigger than 0."));
+		return false;
+	}
+
+	// Get the bounding box of the spline.
+	FBox SplineBounds = BoundarySpline->Bounds.GetBox();
+	FVector Origin = SplineBounds.GetCenter();
+	FVector Extent = SplineBounds.GetExtent();
+
+	// Calculate the number of points to generate along each axis.
+	const int32 NumPointsX = FMath::CeilToInt(Extent.X * 2 / GridSize);
+	const int32 NumPointsY = FMath::CeilToInt(Extent.Y * 2 / GridSize);
+
+	TArray<FTransform> Temp_Vertices;
+
+	for (int32 i = -NumPointsX / 2; i <= NumPointsX / 2; i++)
+	{
+		for (int32 j = -NumPointsY / 2; j <= NumPointsY / 2; j++)
 		{
-			const double Percent = UKismetMathLibrary::GenericPercent_FloatFloat(UKismetMathLibrary::Abs(Index_Y + Number_Y), 2);
-			
-			const double X_Axis = Origin.X + (Index_X * Clampled_Size) + (Percent * Divison);
-			const double Y_Axis = Origin.Y + (Index_Y * Tangent);
-			const double Z_Axis = Origin.Z;
-			
-			const FVector CurrentLocation = FVector(X_Axis, Y_Axis, Z_Axis);
+			// Calculate the position of the current grid point.
+			FVector FloorLocation = Origin + FVector(i * GridSize, j * GridSize, 0);
 
-			FVector Direction = In_Spline->FindDirectionClosestToWorldLocation(CurrentLocation, ESplineCoordinateSpace::World);
-			FVector CrossProduct = UKismetMathLibrary::Cross_VectorVector(FVector(0, 0, 1), Direction);
-			
-			FVector CurrentEdgeLocation = In_Spline->FindLocationClosestToWorldLocation(CurrentLocation, ESplineCoordinateSpace::World);
-			FVector LocationDifference = CurrentEdgeLocation - CurrentLocation;
-			
-			const double DotProduct = UKismetMathLibrary::Dot_VectorVector(LocationDifference, CrossProduct);
-			bIsInside = DotProduct < 0 ? true : false;
-			
-			const double VectorLenght = UKismetMathLibrary::VSize(LocationDifference);
-			bIsEdge = VectorLenght < Triangle_Size ? true : false;
-
-			CurrentPoint++;
-
-			if (bIsInside)
+			if (IsPointInsideSpline(BoundarySpline, FloorLocation))
 			{
-				APlanar_Meshing::SetArrayElement<FVector>(Vertices, CurrentLocation, CurrentPoint);
-				APlanar_Meshing::SetArrayElement<int32>(Point_Indexes, CurrentPoint, 0);
-			}
+				for (int32 Index_Layer = 0; Index_Layer < Layer; Index_Layer++)
+				{
+					FVector EachLocation = FloorLocation;
+					EachLocation.Z = Index_Layer * Height + FloorLocation.Z;
 
-			else if (bIsEdge)
-			{
-				APlanar_Meshing::SetArrayElement<FVector>(Vertices, CurrentEdgeLocation, CurrentPoint);
-				APlanar_Meshing::SetArrayElement<int32>(Point_Indexes, CurrentPoint, 1);
-			}
+					FTransform EachTransform;
+					EachTransform.SetLocation(EachLocation);
+					EachTransform.SetScale3D(Size);
 
-			else
-			{
-				APlanar_Meshing::SetArrayElement<FVector>(Vertices, CurrentLocation, CurrentPoint);
-				APlanar_Meshing::SetArrayElement<int32>(Point_Indexes, CurrentPoint, -1);
+					Temp_Vertices.Add(EachTransform);
+				}
 			}
 		}
 	}
 
-	FGridParameters Out_Params;
-	Out_Params.Grid_X = Number_X * 2;
-	Out_Params.Points = Point_Indexes;
-	Out_Params.Vertices = Vertices;
+	Out_Vertices = Temp_Vertices;
+	return true;
+}
 
-	return Out_Params;
+void APlanar_Meshing::Grid_Debug(FVector Point, bool bInside, bool bIsPersistant, double Time)
+{
+	FColor Color = bInside ? FColor::Green : FColor::Red;
+	float PointSize = 10.0f;
+
+	DrawDebugPoint(GetWorld(), Point, PointSize, Color, bIsPersistant, Time);
 }
