@@ -130,6 +130,7 @@ bool APlanar_Meshing_Beta::Generate_ISM(UInstancedStaticMeshComponent* In_ISMC, 
 		return false;
 	}
 
+	TArray<FTransform> Array_Transforms;
 	for (int32 Index_Object = 1; Index_Object < In_Params.Points.Num(); Index_Object++)
 	{
 		if (In_Params.Points[Index_Object] >= 0)
@@ -137,10 +138,13 @@ bool APlanar_Meshing_Beta::Generate_ISM(UInstancedStaticMeshComponent* In_ISMC, 
 			FTransform Transform;
 			Transform.SetScale3D(ObjectSize);
 			Transform.SetLocation(In_Params.Vertices[Index_Object]);
-
-			In_ISMC->AddInstanceWorldSpace(Transform);
+			Array_Transforms.Add(Transform);
+			
+			//In_ISMC->AddInstance(Transform, true);
 		}
 	}
+
+	In_ISMC->AddInstances(Array_Transforms, false, true);
 
 	return true;
 }
